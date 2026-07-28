@@ -59,6 +59,7 @@
   #meta { text-align: center; margin-bottom: 20px; }
   #title { font-size: 2.1rem; font-weight: 700; }
   #artist { font-size: 1.3rem; color: #999; margin-top: 4px; }
+  #lyricsSource { font-size: 0.8rem; color: #555; margin-top: 6px; }
   #lyricsBox {
     width: 100%;
     max-width: 900px;
@@ -97,6 +98,7 @@
   <div id="meta">
     <div id="title">-</div>
     <div id="artist"></div>
+    <div id="lyricsSource"></div>
   </div>
   <div id="lyricsBox"></div>
 </div>
@@ -121,6 +123,7 @@ const mainScreen = document.getElementById('mainScreen');
 const statusEl = document.getElementById('status');
 const titleEl = document.getElementById('title');
 const artistEl = document.getElementById('artist');
+const lyricsSourceEl = document.getElementById('lyricsSource');
 const lyricsBox = document.getElementById('lyricsBox');
 
 let syncedLyrics = [];
@@ -166,6 +169,7 @@ function render(data) {
   statusEl.textContent = data.isPlaying ? '재생 중' : '일시정지';
   titleEl.textContent = data.title || '-';
   artistEl.textContent = data.artist || '';
+  lyricsSourceEl.textContent = data.lyricsSource ? `가사 출처: ${data.lyricsSource}` : '';
 
   isPlaying = !!data.isPlaying;
   basePositionMs = data.positionMs || 0;
