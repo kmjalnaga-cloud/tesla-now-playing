@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Now Playing Lyrics</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #000;
+    color: #fff;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    height: 100vh;
+    overflow: hidden;
+  }
+  #status {
+    position: fixed;
+    top: 12px;
+    right: 16px;
+    font-size: 0.85rem;
+    color: #777;
+  }
+  #pairScreen {
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+  }
+  #pairScreen p { font-size: 1.3rem; margin-bottom: 12px; }
+  #codeInput {
+    font-size: 1.5rem;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid #333;
+    background: #111;
+    color: #fff;
+    text-align: center;
+  }
+  #codeSubmit {
+    font-size: 1.3rem;
+    padding: 10px 20px;
+    margin-top: 12px;
+    border-radius: 8px;
+    border: none;
+    background: #e82127;
+    color: #fff;
+  }
+  #mainScreen {
+    display: none;
+    height: 100vh;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  #meta { text-align: center; margin-bottom: 20px; }
+  #title { font-size: 2.1rem; font-weight: 700; }
+  #artist { font-size: 1.3rem; color: #999; margin-top: 4px; }
+  #lyricsBox {
+    width: 100%;
+    max-width: 900px;
+    height: 60vh;
+    overflow-y: auto;
+    text-align: center;
+    scroll-behavior: smooth;
+    scrollbar-width: none;
+  }
+  #lyricsBox::-webkit-scrollbar { display: none; }
+  .line {
+    font-size: 1.7rem;
+    line-height: 2.5rem;
+    color: #555;
+    transition: color 0.3s, font-size 0.3s;
+    padding: 4px 16px;
+  }
+  .line.active {
+    color: #fff;
+    font-size: 2.1rem;
+    font-weight: 700;
+  }
+</style>
+</head>
+<body>
+
+<div id="status"></div>
+
+<div id="pairScreen">
+  <p>테슬라 가사 앱 페어링 코드를 입력하세요</p>
+  <input id="codeInput" placeholder="예: a1b2c3d4e5f6" autocomplete="off" />
+  <button id="codeSubmit">연결</button>
+</div>
+
+<div id="mainScreen">
+  <div id="meta">
+    <div id="title">-</div>
+    <div id="artist"></div>
+  </div>
+  <div id="lyricsBox"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyA0xXKqBXsnGArW2Kp67I24stAXcRc0uzM",
+  authDomain: "tesla-lyrics-14c87.firebaseapp.com",
+  databaseURL: "https://tesla-lyrics-14c87-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "tesla-lyrics-14c87",
+  storageBucket: "tesla-lyrics-14c87.firebasestorage.app",
+  messagingSenderId: "662777813005",
+  appId: "1:662777813005:web:2cfc6d793e1e647aec9d44"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const pairScreen = document.getElementById('pairScreen');
+const mainScreen = document.getElementById('mainScreen');
+const statusEl = document.getElementById('status');
+const titleEl = document.getElementById('title');
+const artistEl = document.getElementById('artist');
+const lyricsBox = document.getElementById('lyricsBox');
+
+let syncedLyrics = [];
+let lastTrackKey = null;
+let activeIndex = -1;
+
+// 로컬 보간용 상태: 마지막으로 받은 위치와 수신 시각을 기준으로
+// 프레임마다 재생 위치를 추정해서 자연스럽게 스크롤한다.
+let basePositionMs = 0;
+let baseReceivedAt = 0;
+let isPlaying = false;
+
+function startWithCode(code) {
+  localStorage.setItem('pairingCode', code);
+  pairScreen.style.display = 'none';
+  mainScreen.style.display = 'flex';
+  subscribe(code);
+}
+
+document.getElementById('codeSubmit').addEventListener('click', () => {
+  const value = document.getElementById('codeInput').value.trim();
+  if (value) startWithCode(value);
+});
+document.getElementById('codeInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('codeSubmit').click();
+});
+
+function subscribe(code) {
+  const ref = db.ref('nowplaying/' + code);
+  ref.on('value', (snap) => {
+    const data = snap.val();
+    if (!data) {
+      statusEl.textContent = '연결됨 · 재생 대기 중';
+      return;
+    }
+    render(data);
+  }, (err) => {
+    statusEl.textContent = '연결 오류: ' + err.message;
+  });
+}
+
+function render(data) {
+  statusEl.textContent = data.isPlaying ? '재생 중' : '일시정지';
+  titleEl.textContent = data.title || '-';
+  artistEl.textContent = data.artist || '';
+
+  isPlaying = !!data.isPlaying;
+  basePositionMs = data.positionMs || 0;
+  baseReceivedAt = Date.now();
+
+  const trackKey = (data.title || '') + '|' + (data.artist || '');
+  if (trackKey !== lastTrackKey) {
+    lastTrackKey = trackKey;
+    activeIndex = -1;
+    syncedLyrics = data.syncedLyrics ? Object.values(data.syncedLyrics) : [];
+    renderLyricsList(data);
+  }
+}
+
+function renderLyricsList(data) {
+  lyricsBox.innerHTML = '';
+  if (syncedLyrics.length > 0) {
+    syncedLyrics.forEach((line, i) => {
+      const div = document.createElement('div');
+      div.className = 'line';
+      div.id = 'line-' + i;
+      div.textContent = line.text || ' ';
+      lyricsBox.appendChild(div);
+    });
+  } else if (data.plainLyrics) {
+    data.plainLyrics.split('\n').forEach((text) => {
+      const div = document.createElement('div');
+      div.className = 'line';
+      div.textContent = text || ' ';
+      lyricsBox.appendChild(div);
+    });
+  } else {
+    lyricsBox.innerHTML = '<div class="line">가사를 찾을 수 없어요</div>';
+  }
+}
+
+function estimatedPositionMs() {
+  if (!isPlaying) return basePositionMs;
+  return basePositionMs + (Date.now() - baseReceivedAt);
+}
+
+function tick() {
+  if (syncedLyrics.length > 0) {
+    const position = estimatedPositionMs();
+    let idx = -1;
+    for (let i = 0; i < syncedLyrics.length; i++) {
+      if (syncedLyrics[i].timeMs <= position) idx = i;
+      else break;
+    }
+    if (idx !== activeIndex) {
+      activeIndex = idx;
+      document.querySelectorAll('.line.active').forEach((el) => el.classList.remove('active'));
+      if (idx >= 0) {
+        const el = document.getElementById('line-' + idx);
+        if (el) {
+          el.classList.add('active');
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }
+    }
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+const savedCode = localStorage.getItem('pairingCode');
+const paramCode = new URLSearchParams(location.search).get('code');
+const initialCode = paramCode || savedCode;
+if (initialCode) {
+  document.getElementById('codeInput').value = initialCode;
+  startWithCode(initialCode);
+}
+</script>
+</body>
+</html>
