@@ -223,6 +223,8 @@ function renderLyricsList(data) {
       div.textContent = text || ' ';
       lyricsBox.appendChild(div);
     });
+  } else if (data.lyricsStatus === 'searching') {
+    lyricsBox.innerHTML = '<div class="line">가사 검색 중...</div>';
   } else {
     lyricsBox.innerHTML = '<div class="line">가사를 찾을 수 없어요</div>';
   }
