@@ -92,6 +92,22 @@
     font-size: 2.1rem;
     font-weight: 700;
   }
+  #syncControls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 16px;
+    color: #999;
+  }
+  #syncControls button {
+    font-size: 0.95rem;
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: 1px solid #333;
+    background: #111;
+    color: #fff;
+  }
+  #syncOffsetValue { min-width: 56px; text-align: center; font-size: 0.9rem; }
 </style>
 </head>
 <body>
@@ -114,6 +130,12 @@
     </div>
   </div>
   <div id="lyricsBox"></div>
+  <div id="syncControls">
+    <button id="syncMinus">-0.5s</button>
+    <span id="syncOffsetValue">0.0s</span>
+    <button id="syncPlus">+0.5s</button>
+    <button id="syncReset">리셋</button>
+  </div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -139,6 +161,7 @@ const artistEl = document.getElementById('artist');
 const lyricsSourceEl = document.getElementById('lyricsSource');
 const albumArtEl = document.getElementById('albumArt');
 const lyricsBox = document.getElementById('lyricsBox');
+const syncOffsetValueEl = document.getElementById('syncOffsetValue');
 
 let syncedLyrics = [];
 let lastTrackKey = null;
@@ -149,6 +172,27 @@ let activeIndex = -1;
 let basePositionMs = 0;
 let baseReceivedAt = 0;
 let isPlaying = false;
+
+// 사용자가 수동으로 조절하는 가사 싱크 보정값(ms). 기기/네트워크 지연을
+// 보정하기 위한 값이라 브라우저에 저장해서 다음 방문 때도 유지한다.
+let syncOffsetMs = parseInt(localStorage.getItem('syncOffsetMs') || '0', 10);
+
+function updateSyncOffsetDisplay() {
+  const seconds = syncOffsetMs / 1000;
+  const sign = seconds > 0 ? '+' : '';
+  syncOffsetValueEl.textContent = `${sign}${seconds.toFixed(1)}s`;
+}
+
+function setSyncOffset(ms) {
+  syncOffsetMs = ms;
+  localStorage.setItem('syncOffsetMs', String(syncOffsetMs));
+  updateSyncOffsetDisplay();
+}
+
+document.getElementById('syncMinus').addEventListener('click', () => setSyncOffset(syncOffsetMs - 500));
+document.getElementById('syncPlus').addEventListener('click', () => setSyncOffset(syncOffsetMs + 500));
+document.getElementById('syncReset').addEventListener('click', () => setSyncOffset(0));
+updateSyncOffsetDisplay();
 
 function startWithCode(code) {
   localStorage.setItem('pairingCode', code);
@@ -240,8 +284,8 @@ function scrollToLine(el) {
 }
 
 function estimatedPositionMs() {
-  if (!isPlaying) return basePositionMs;
-  return basePositionMs + (Date.now() - baseReceivedAt);
+  const base = isPlaying ? basePositionMs + (Date.now() - baseReceivedAt) : basePositionMs;
+  return base + syncOffsetMs;
 }
 
 function tick() {
