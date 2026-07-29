@@ -165,6 +165,7 @@ const syncOffsetValueEl = document.getElementById('syncOffsetValue');
 
 let syncedLyrics = [];
 let lastTrackKey = null;
+let lastLyricsKey = null;
 let activeIndex = -1;
 
 // 로컬 보간용 상태: 마지막으로 받은 위치와 수신 시각을 기준으로
@@ -242,9 +243,15 @@ function render(data) {
   baseReceivedAt = Date.now();
 
   const trackKey = (data.title || '') + '|' + (data.artist || '');
-  if (trackKey !== lastTrackKey) {
+  // 제목/가수가 같아도 "검색 중 -> 완료"로 가사 내용 자체가 바뀔 수 있어서,
+  // 곡이 바뀐 건지와 별개로 가사 상태(status/plain/synced)도 같이 봐야 한다.
+  const lyricsKey = (data.lyricsStatus || '') + '|' + (data.plainLyrics ? 'p' : '') +
+    '|' + (data.syncedLyrics ? Object.keys(data.syncedLyrics).length : 0);
+
+  if (trackKey !== lastTrackKey || lyricsKey !== lastLyricsKey) {
+    if (trackKey !== lastTrackKey) activeIndex = -1;
     lastTrackKey = trackKey;
-    activeIndex = -1;
+    lastLyricsKey = lyricsKey;
     syncedLyrics = data.syncedLyrics ? Object.values(data.syncedLyrics) : [];
     renderLyricsList(data);
   }
