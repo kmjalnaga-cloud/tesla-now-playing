@@ -56,7 +56,17 @@
     justify-content: center;
     padding: 24px;
   }
-  #meta { text-align: center; margin-bottom: 20px; }
+  #meta { display: flex; align-items: center; gap: 20px; margin-bottom: 20px; }
+  #albumArt {
+    width: 88px;
+    height: 88px;
+    border-radius: 8px;
+    object-fit: cover;
+    background: #111;
+    display: none;
+  }
+  #albumArt.visible { display: block; }
+  #metaText { text-align: left; }
   #title { font-size: 2.1rem; font-weight: 700; }
   #artist { font-size: 1.3rem; color: #999; margin-top: 4px; }
   #lyricsSource { font-size: 0.8rem; color: #555; margin-top: 6px; }
@@ -96,9 +106,12 @@
 
 <div id="mainScreen">
   <div id="meta">
-    <div id="title">-</div>
-    <div id="artist"></div>
-    <div id="lyricsSource"></div>
+    <img id="albumArt" alt="" />
+    <div id="metaText">
+      <div id="title">-</div>
+      <div id="artist"></div>
+      <div id="lyricsSource"></div>
+    </div>
   </div>
   <div id="lyricsBox"></div>
 </div>
@@ -124,6 +137,7 @@ const statusEl = document.getElementById('status');
 const titleEl = document.getElementById('title');
 const artistEl = document.getElementById('artist');
 const lyricsSourceEl = document.getElementById('lyricsSource');
+const albumArtEl = document.getElementById('albumArt');
 const lyricsBox = document.getElementById('lyricsBox');
 
 let syncedLyrics = [];
@@ -170,6 +184,14 @@ function render(data) {
   titleEl.textContent = data.title || '-';
   artistEl.textContent = data.artist || '';
   lyricsSourceEl.textContent = data.lyricsSource ? `가사 출처: ${data.lyricsSource}` : '';
+
+  if (data.albumArtUrl) {
+    albumArtEl.src = data.albumArtUrl;
+    albumArtEl.classList.add('visible');
+  } else {
+    albumArtEl.removeAttribute('src');
+    albumArtEl.classList.remove('visible');
+  }
 
   isPlaying = !!data.isPlaying;
   basePositionMs = data.positionMs || 0;
