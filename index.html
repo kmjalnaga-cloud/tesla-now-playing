@@ -229,7 +229,7 @@ function renderLyricsList(data) {
 }
 
 // 하이라이트 줄이 가사 박스 높이의 이 비율 지점에 오도록 스크롤
-const ACTIVE_LINE_OFFSET_RATIO = 0.5;
+const ACTIVE_LINE_OFFSET_RATIO = 1;
 
 function scrollToLine(el) {
   const targetOffset = lyricsBox.clientHeight * ACTIVE_LINE_OFFSET_RATIO;
