@@ -225,10 +225,11 @@ function subscribe(code) {
 }
 
 function render(data) {
-  statusEl.textContent = data.isPlaying ? '재생 중' : '일시정지';
-  titleEl.textContent = data.title || '-';
-  artistEl.textContent = data.artist || '';
-  lyricsSourceEl.textContent = data.lyricsSource ? `가사 출처: ${data.lyricsSource}` : '';
+  const nothingPlaying = data.lyricsStatus === 'none';
+  statusEl.textContent = nothingPlaying ? '재생 중인 곡이 없어요' : (data.isPlaying ? '재생 중' : '일시정지');
+  titleEl.textContent = nothingPlaying ? '-' : (data.title || '-');
+  artistEl.textContent = nothingPlaying ? '' : (data.artist || '');
+  lyricsSourceEl.textContent = nothingPlaying ? '' : (data.lyricsSource ? `가사 출처: ${data.lyricsSource}` : '');
 
   if (data.albumArtUrl) {
     albumArtEl.src = data.albumArtUrl;
@@ -276,6 +277,8 @@ function renderLyricsList(data) {
     });
   } else if (data.lyricsStatus === 'searching') {
     lyricsBox.innerHTML = '<div class="line">가사 검색 중...</div>';
+  } else if (data.lyricsStatus === 'none') {
+    lyricsBox.innerHTML = '';
   } else {
     lyricsBox.innerHTML = '<div class="line">가사를 찾을 수 없어요</div>';
   }
