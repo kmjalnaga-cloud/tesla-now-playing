@@ -268,6 +268,7 @@ function renderLyricsList(data) {
       div.textContent = line.text || ' ';
       lyricsBox.appendChild(div);
     });
+    addBottomSpacer();
   } else if (data.plainLyrics) {
     data.plainLyrics.split('\n').forEach((text) => {
       const div = document.createElement('div');
@@ -291,6 +292,15 @@ function scrollToLine(el) {
   const targetOffset = lyricsBox.clientHeight * ACTIVE_LINE_OFFSET_RATIO;
   const scrollTop = el.offsetTop - targetOffset + el.offsetHeight / 2;
   lyricsBox.scrollTo({ top: scrollTop, behavior: 'smooth' });
+}
+
+// 마지막 줄들은 스크롤할 콘텐츠가 부족해서 하이라이트 지점(위 비율)까지
+// 끌어올릴 수 없고, 그만큼 위로 밀려 올라가 보인다. 실제 콘텐츠 아래에
+// 빈 여백을 더해서 마지막 줄도 같은 위치에 고정되도록 한다.
+function addBottomSpacer() {
+  const spacer = document.createElement('div');
+  spacer.style.height = (lyricsBox.clientHeight * (1 - ACTIVE_LINE_OFFSET_RATIO)) + 'px';
+  lyricsBox.appendChild(spacer);
 }
 
 function estimatedPositionMs() {
