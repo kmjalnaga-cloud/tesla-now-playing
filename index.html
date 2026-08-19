@@ -108,8 +108,16 @@
     color: #fff;
   }
   #syncOffsetValue { min-width: 56px; text-align: center; font-size: 0.9rem; }
-  #retryLyricsButton {
+  #retryControls {
     margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  #retryLabel { font-size: 0.85rem; color: #777; }
+  .retryButton {
     font-size: 0.9rem;
     padding: 8px 14px;
     border-radius: 6px;
@@ -145,7 +153,12 @@
     <button id="syncPlus">+0.5s</button>
     <button id="syncReset">리셋</button>
   </div>
-  <button id="retryLyricsButton">다른 가사 찾기</button>
+  <div id="retryControls">
+    <span id="retryLabel">다른 소스로 찾기:</span>
+    <button class="retryButton" data-source="LRCLIB">LRCLIB</button>
+    <button class="retryButton" data-source="NetEase">NetEase</button>
+    <button class="retryButton" data-source="lyrics.ovh">lyrics.ovh</button>
+  </div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -205,9 +218,14 @@ document.getElementById('syncPlus').addEventListener('click', () => setSyncOffse
 document.getElementById('syncReset').addEventListener('click', () => setSyncOffset(0));
 updateSyncOffsetDisplay();
 
-document.getElementById('retryLyricsButton').addEventListener('click', () => {
-  if (!currentCode) return;
-  db.ref('nowplaying/' + currentCode).update({ retryRequestedAt: firebase.database.ServerValue.TIMESTAMP });
+document.querySelectorAll('.retryButton').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    if (!currentCode) return;
+    db.ref('nowplaying/' + currentCode + '/retryRequest').set({
+      at: firebase.database.ServerValue.TIMESTAMP,
+      source: btn.dataset.source
+    });
+  });
 });
 
 function startWithCode(code) {
