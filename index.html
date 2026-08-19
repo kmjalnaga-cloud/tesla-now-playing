@@ -108,6 +108,15 @@
     color: #fff;
   }
   #syncOffsetValue { min-width: 56px; text-align: center; font-size: 0.9rem; }
+  #retryLyricsButton {
+    margin-top: 10px;
+    font-size: 0.9rem;
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: 1px solid #333;
+    background: #111;
+    color: #999;
+  }
 </style>
 </head>
 <body>
@@ -136,6 +145,7 @@
     <button id="syncPlus">+0.5s</button>
     <button id="syncReset">리셋</button>
   </div>
+  <button id="retryLyricsButton">다른 가사 찾기</button>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -195,6 +205,11 @@ document.getElementById('syncPlus').addEventListener('click', () => setSyncOffse
 document.getElementById('syncReset').addEventListener('click', () => setSyncOffset(0));
 updateSyncOffsetDisplay();
 
+document.getElementById('retryLyricsButton').addEventListener('click', () => {
+  if (!currentCode) return;
+  db.ref('nowplaying/' + currentCode).update({ retryRequestedAt: firebase.database.ServerValue.TIMESTAMP });
+});
+
 function startWithCode(code) {
   localStorage.setItem('pairingCode', code);
   pairScreen.style.display = 'none';
@@ -210,7 +225,10 @@ document.getElementById('codeInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') document.getElementById('codeSubmit').click();
 });
 
+let currentCode = null;
+
 function subscribe(code) {
+  currentCode = code;
   const ref = db.ref('nowplaying/' + code);
   ref.on('value', (snap) => {
     const data = snap.val();
