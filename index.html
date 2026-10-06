@@ -22,6 +22,8 @@
     font-size: 0.85rem;
     color: #777;
   }
+  /* 폰 앱 응답 없음 / 인터넷 끊김 경고 */
+  #status.stale { color: #e8a33d; font-weight: 700; }
   #pairScreen {
     height: 100vh;
     display: flex;
@@ -330,12 +332,13 @@ function subscribe(code) {
   ref.on('value', (snap) => {
     const data = snap.val();
     if (!data) {
-      statusEl.textContent = '연결됨 · 재생 대기 중';
+      lastData = null;
+      setBaseStatus('연결됨 · 재생 대기 중');
       return;
     }
     render(data);
   }, (err) => {
-    statusEl.textContent = '연결 오류: ' + err.message;
+    setBaseStatus('연결 오류: ' + err.message);
   });
 }
 
@@ -344,11 +347,55 @@ function subscribe(code) {
 // 푸시가 늦게 도착해도 그만큼을 더해서 지금 위치를 맞출 수 있다. 서로의 기기
 // 시계가 달라도 둘 다 서버 시계로 환산하기 때문에 영향이 없다.
 let serverOffsetMs = 0;
+let serverOffsetKnown = false;
 let lastData = null;
 db.ref('.info/serverTimeOffset').on('value', (snap) => {
   serverOffsetMs = snap.val() || 0;
+  serverOffsetKnown = true;
   if (lastData) applyPosition(lastData);
 });
+
+// 연결 상태 표시. 폰이 화면이 꺼진 채 절전으로 앱을 재우면 앱이 아무것도 안
+// 보내는데, 그동안 화면엔 마지막 가사가 그대로 남아서 멈춘 줄 모르고 보게 된다.
+// 앱은 재생 중이면 5초마다 푸시하므로, 그보다 한참 오래 조용하면 경고한다.
+// 재생 중이 아닐 때(일시정지/없음)는 앱이 원래 푸시를 멈추니 경고하지 않는다.
+const APP_SILENT_AFTER_MS = 25 * 1000;
+const OFFLINE_WARN_AFTER_MS = 3 * 1000;
+let baseStatusText = null;
+let browserOfflineSince = null;
+
+db.ref('.info/connected').on('value', (snap) => {
+  browserOfflineSince = snap.val() === true ? null : (browserOfflineSince || Date.now());
+  updateConnectionStatus();
+});
+
+function setBaseStatus(text) {
+  baseStatusText = text;
+  updateConnectionStatus();
+}
+
+function formatSilence(ms) {
+  const sec = Math.round(ms / 1000);
+  return sec < 60 ? `${sec}초` : `${Math.floor(sec / 60)}분`;
+}
+
+function updateConnectionStatus() {
+  if (baseStatusText === null) return;
+
+  let warning = null;
+  // 브라우저 자체가 끊겼으면 앱 탓이 아니므로 그걸 먼저 알린다(데이터가 안 오는 건 당연하니까).
+  if (browserOfflineSince !== null && Date.now() - browserOfflineSince > OFFLINE_WARN_AFTER_MS) {
+    warning = '⚠ 인터넷 연결 끊김';
+  } else if (serverOffsetKnown && lastData && lastData.isPlaying &&
+             lastData.lyricsStatus !== 'none' && lastData.updatedAt) {
+    const silentMs = Date.now() + serverOffsetMs - lastData.updatedAt;
+    if (silentMs > APP_SILENT_AFTER_MS) warning = `⚠ 폰 앱 응답 없음 · ${formatSilence(silentMs)}`;
+  }
+
+  statusEl.classList.toggle('stale', warning !== null);
+  statusEl.textContent = warning !== null ? warning : baseStatusText;
+}
+setInterval(updateConnectionStatus, 1000);
 
 function applyPosition(data) {
   isPlaying = !!data.isPlaying;
@@ -364,7 +411,8 @@ function applyPosition(data) {
 
 function render(data) {
   const nothingPlaying = data.lyricsStatus === 'none';
-  statusEl.textContent = nothingPlaying ? '재생 중인 곡이 없어요' : (data.isPlaying ? '재생 중' : '일시정지');
+  lastData = data;
+  setBaseStatus(nothingPlaying ? '재생 중인 곡이 없어요' : (data.isPlaying ? '재생 중' : '일시정지'));
   titleEl.textContent = nothingPlaying ? '-' : (data.title || '-');
   artistEl.textContent = nothingPlaying ? '' : (data.artist || '');
   lyricsSourceEl.textContent = nothingPlaying ? '' : (data.lyricsSource ? `가사 출처: ${data.lyricsSource}` : '');
@@ -377,7 +425,6 @@ function render(data) {
     albumArtEl.classList.remove('visible');
   }
 
-  lastData = data;
   applyPosition(data);
 
   const trackKey = (data.title || '') + '|' + (data.artist || '');
