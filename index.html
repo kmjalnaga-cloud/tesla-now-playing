@@ -109,6 +109,16 @@
     color: #999;
   }
   .controlDivider { width: 1px; height: 24px; background: #333; margin: 0 6px; }
+  /* 일본어 노래에서만 나타나는 발음 버튼 묶음 */
+  .controlGroup { display: none; align-items: center; gap: 10px; }
+  .controlGroup.visible { display: flex; }
+  /* 가사 줄 아래 작은 발음 줄 (한글/로마자) */
+  .pron {
+    font-size: 0.62em;
+    line-height: calc(1.7rem * var(--lyric-scale, 1));
+    font-weight: 400;
+  }
+  .line.active .pron { color: #d4d4d4; }
   #fontScaleValue { min-width: 52px; text-align: center; font-size: 0.9rem; }
   #syncControls button {
     font-size: 0.95rem;
@@ -187,6 +197,10 @@
     <button id="fontMinus" aria-label="가사 글자 작게">가−</button>
     <span id="fontScaleValue">100%</span>
     <button id="fontPlus" aria-label="가사 글자 크게">가+</button>
+    <span id="pronGroup" class="controlGroup">
+      <span class="controlDivider"></span>
+      <button id="pronMode">발음: 한글</button>
+    </span>
   </div>
   <div id="retryControls">
     <span id="retryLabel">다른 소스로 찾기:</span>
@@ -442,6 +456,7 @@ function render(data) {
     activeIndex = -1;
     renderLyricsList(data);
   }
+  updatePronButton(data);
 }
 
 // 가사가 "다시 그려져야 하는지" 판단하는 지문. 줄 수만 보면 줄 수가 같은 다른
@@ -454,18 +469,173 @@ function lyricsFingerprint(data) {
     synced.length,
     synced.length ? synced[0].text : '',
     synced.length ? synced[synced.length - 1].text : '',
-    data.plainLyrics ? data.plainLyrics.length : 0
+    data.plainLyrics ? data.plainLyrics.length : 0,
+    data.romanizedLyrics ? Object.keys(data.romanizedLyrics).length : 0
   ].join('|');
 }
+
+// ---- 일본어 발음 (한글 / 로마자) ----
+// 앱이 NetEase의 로마자 가사(romanizedLyrics)를 원문과 같은 시간대로 보내준다.
+// 로마자는 그대로 보여줄 수도 있고, 아래 규칙으로 한글 발음으로 바꿔 보여줄 수도 있다.
+const PRON_MODES = ['hangul', 'roma', 'off'];
+const PRON_LABELS = { hangul: '발음: 한글', roma: '발음: 로마자', off: '발음: 끔' };
+let pronMode = localStorage.getItem('pronMode');
+if (PRON_MODES.indexOf(pronMode) < 0) pronMode = 'hangul';
+
+const KANA_RE = /[぀-ヿ]/;
+
+// 로마자 한 음절(모라) -> 한글. 일본어 한글 표기 관례를 따르되, 노래를 따라 부르는
+// 용도라 장음도 늘이지 않고 소리 나는 대로 한 음절씩 적는다(ou -> 오우).
+const ROMAJI_TABLE = (() => {
+  const t = {};
+  const vowels = ['a', 'i', 'u', 'e', 'o'];
+  const rows = {
+    '': ['아', '이', '우', '에', '오'],
+    k: ['카', '키', '쿠', '케', '코'], g: ['가', '기', '구', '게', '고'],
+    s: ['사', '시', '스', '세', '소'], z: ['자', '지', '즈', '제', '조'],
+    t: ['타', '티', '투', '테', '토'], d: ['다', '디', '두', '데', '도'],
+    n: ['나', '니', '누', '네', '노'], h: ['하', '히', '후', '헤', '호'],
+    b: ['바', '비', '부', '베', '보'], p: ['파', '피', '푸', '페', '포'],
+    m: ['마', '미', '무', '메', '모'], r: ['라', '리', '루', '레', '로'],
+    y: ['야', null, '유', null, '요'], w: ['와', '위', null, '웨', '오'],  // wo = を
+    f: ['파', '피', '후', '페', '포'], v: ['바', '비', '부', '베', '보'],
+    j: ['자', '지', '주', '제', '조']
+  };
+  Object.keys(rows).forEach((c) => vowels.forEach((v, i) => { if (rows[c][i]) t[c + v] = rows[c][i]; }));
+  // 헵번식 철자
+  Object.assign(t, { shi: '시', sha: '샤', shu: '슈', she: '셰', sho: '쇼',
+                     chi: '치', cha: '차', chu: '추', che: '체', cho: '초', tsu: '츠' });
+  // 요음 (きゃ, ぎゃ ...)
+  const yoon = { k: ['캬', '큐', '쿄'], g: ['갸', '규', '교'], n: ['냐', '뉴', '뇨'], h: ['햐', '휴', '효'],
+                 b: ['뱌', '뷰', '뵤'], p: ['퍄', '퓨', '표'], m: ['먀', '뮤', '묘'], r: ['랴', '류', '료'] };
+  Object.keys(yoon).forEach((c) => ['a', 'u', 'o'].forEach((v, i) => { t[c + 'y' + v] = yoon[c][i]; }));
+  return t;
+})();
+
+const JONG_N = 4;    // 받침 ㄴ
+const JONG_S = 19;   // 받침 ㅅ
+
+// 한글 음절에 받침을 붙인다. 이미 받침이 있거나 한글 음절이 아니면 null.
+function withFinal(syllable, jong) {
+  const code = syllable.charCodeAt(0);
+  if (syllable.length !== 1 || code < 0xAC00 || code > 0xD7A3 || (code - 0xAC00) % 28 !== 0) return null;
+  return String.fromCharCode(code + jong);
+}
+
+// 로마자 한 단어 -> 한글. 일본어 철자로 끝까지 해석되지 않으면(영어 단어 등) null.
+function romajiWordToHangul(word) {
+  const isVowel = (c) => 'aiueo'.indexOf(c) >= 0;
+  const out = [];
+  const attach = (jong, fallback) => {
+    const merged = out.length ? withFinal(out[out.length - 1], jong) : null;
+    if (merged) out[out.length - 1] = merged;
+    else if (fallback) out.push(fallback);
+  };
+  let i = 0;
+  while (i < word.length) {
+    const c = word[i], next = word[i + 1];
+    if (c === "'") { i++; continue; }
+    // ん: 뒤에 모음/y가 안 오는 n (n' 으로 구분해 적은 경우 포함) -> 앞 음절의 받침 ㄴ
+    if (c === 'n' && (next === undefined || next === "'" || !(isVowel(next) || next === 'y'))) {
+      attach(JONG_N, '응'); i++; continue;
+    }
+    // っ: 같은 자음이 겹친 곳(kk, ss, tt, pp, tch) -> 앞 음절의 받침 ㅅ
+    if (!isVowel(c) && c !== 'n' && (next === c || (c === 't' && next === 'c' && word[i + 2] === 'h'))) {
+      attach(JONG_S, null); i++; continue;
+    }
+    let key = null;
+    for (const len of [3, 2, 1]) {
+      const k = word.substr(i, len);
+      if (ROMAJI_TABLE[k]) { key = k; break; }
+    }
+    if (!key) return null;
+    out.push(ROMAJI_TABLE[key]);
+    i += key.length;
+  }
+  return out.join('');
+}
+
+// 로마자 한 줄 -> 한글 한 줄. 해석 안 되는 단어(영어 등)는 원문 그대로 둔다.
+function romajiToHangul(line) {
+  const parts = line.match(/[A-Za-z]+(?:'[A-Za-z]+)*|[^A-Za-z]+/g) || [];
+  let out = '';
+  parts.forEach((part) => {
+    if (!/[A-Za-z]/.test(part)) { out += part; return; }
+    const word = part.toLowerCase();
+    if (word === 'n') {
+      // 띄어 적힌 "n"(ん)은 앞 단어 마지막 음절의 받침으로 붙인다 (ikite n da -> 이키텐 다)
+      const trimmed = out.replace(/ $/, '');
+      const merged = trimmed ? withFinal(trimmed.slice(-1), JONG_N) : null;
+      out = merged ? trimmed.slice(0, -1) + merged : out + '응';
+      return;
+    }
+    const hangul = romajiWordToHangul(word);
+    out += hangul === null ? part : hangul;
+  });
+  return out;
+}
+
+// 원문 줄마다 시간이 가장 가까운 로마자 줄을 하나씩 짝짓는다(1초 이내). 시간 차가 작은
+// 쌍부터 정해서, 맨 앞 크레딧 줄(작사/작곡)이 첫 가사 줄의 로마자를 가로채지 못하게 한다.
+function alignPronunciation(synced, roma) {
+  const pairs = [];
+  synced.forEach((line, i) => roma.forEach((r, j) => {
+    const d = Math.abs(r.timeMs - line.timeMs);
+    if (d <= 1000) pairs.push({ i, j, d });
+  }));
+  pairs.sort((a, b) => a.d - b.d);
+  const result = new Array(synced.length).fill('');
+  const usedLine = {}, usedRoma = {};
+  pairs.forEach((p) => {
+    if (usedLine[p.i] || usedRoma[p.j]) return;
+    usedLine[p.i] = usedRoma[p.j] = true;
+    result[p.i] = roma[p.j].text || '';
+  });
+  return result;
+}
+
+// 일본어(가나)가 들어 있는 노래에만 발음 줄을 낸다. NetEase의 romalrc는 중국어 노래엔
+// 병음, 한국어 노래엔 로마자 표기라서 그걸 일본어 발음으로 바꾸면 엉뚱해진다.
+function hasPronunciation(data) {
+  return !!data.romanizedLyrics && syncedLyrics.some((l) => KANA_RE.test(l.text));
+}
+
+function pronunciationLines(data) {
+  if (pronMode === 'off' || !hasPronunciation(data)) return [];
+  const aligned = alignPronunciation(syncedLyrics, Object.values(data.romanizedLyrics));
+  return pronMode === 'hangul' ? aligned.map(romajiToHangul) : aligned;
+}
+
+function updatePronButton(data) {
+  document.getElementById('pronGroup').classList.toggle('visible', hasPronunciation(data));
+  document.getElementById('pronMode').textContent = PRON_LABELS[pronMode];
+}
+
+document.getElementById('pronMode').addEventListener('click', () => {
+  pronMode = PRON_MODES[(PRON_MODES.indexOf(pronMode) + 1) % PRON_MODES.length];
+  localStorage.setItem('pronMode', pronMode);
+  if (lastData) {
+    updatePronButton(lastData);
+    renderLyricsList(lastData);
+    activeIndex = -1;   // 줄 높이가 바뀌었으니 하이라이트를 다시 맞춘다
+  }
+});
 
 function renderLyricsList(data) {
   lyricsBox.innerHTML = '';
   if (syncedLyrics.length > 0) {
+    const pron = pronunciationLines(data);
     syncedLyrics.forEach((line, i) => {
       const div = document.createElement('div');
       div.className = 'line';
       div.id = 'line-' + i;
       div.textContent = line.text || ' ';
+      if (pron[i]) {
+        const p = document.createElement('div');
+        p.className = 'pron';
+        p.textContent = pron[i];
+        div.appendChild(p);
+      }
       lyricsBox.appendChild(div);
     });
     addBottomSpacer();
