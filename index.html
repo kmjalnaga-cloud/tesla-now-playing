@@ -71,6 +71,10 @@
   #artist { font-size: 1.3rem; color: #999; margin-top: 4px; }
   #lyricsSource { font-size: 0.8rem; color: #555; margin-top: 6px; }
   #lyricsBox {
+    /* 줄의 offsetTop이 이 박스 기준으로 나오게 하는 기준점. 없으면 페이지 맨 위
+       기준이라 하이라이트가 박스 위쪽 영역(제목 등)의 높이만큼 어긋나고,
+       브라우저를 확대할수록 그 어긋남이 커진다. */
+    position: relative;
     width: 100%;
     max-width: 900px;
     height: 60vh;
@@ -80,25 +84,30 @@
     scrollbar-width: none;
   }
   #lyricsBox::-webkit-scrollbar { display: none; }
+  /* --lyric-scale: "가-/가+" 버튼으로 바꾸는 가사 글자 배율 (기본 1) */
   .line {
-    font-size: 1.7rem;
-    line-height: 2.5rem;
+    font-size: calc(1.7rem * var(--lyric-scale, 1));
+    line-height: calc(2.5rem * var(--lyric-scale, 1));
     color: #555;
     transition: color 0.3s, font-size 0.3s;
     padding: 4px 16px;
   }
   .line.active {
     color: #fff;
-    font-size: 2.1rem;
+    font-size: calc(2.1rem * var(--lyric-scale, 1));
     font-weight: 700;
   }
   #syncControls {
     display: flex;
     align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
     gap: 10px;
     margin-top: 16px;
     color: #999;
   }
+  .controlDivider { width: 1px; height: 24px; background: #333; margin: 0 6px; }
+  #fontScaleValue { min-width: 52px; text-align: center; font-size: 0.9rem; }
   #syncControls button {
     font-size: 0.95rem;
     padding: 8px 14px;
@@ -172,6 +181,10 @@
     <span id="syncOffsetValue">0.0s</span>
     <button id="syncPlus">+0.5s</button>
     <button id="syncReset">리셋</button>
+    <span class="controlDivider"></span>
+    <button id="fontMinus" aria-label="가사 글자 작게">가−</button>
+    <span id="fontScaleValue">100%</span>
+    <button id="fontPlus" aria-label="가사 글자 크게">가+</button>
   </div>
   <div id="retryControls">
     <span id="retryLabel">다른 소스로 찾기:</span>
@@ -237,6 +250,37 @@ document.getElementById('syncMinus').addEventListener('click', () => setSyncOffs
 document.getElementById('syncPlus').addEventListener('click', () => setSyncOffset(syncOffsetMs + 500));
 document.getElementById('syncReset').addEventListener('click', () => setSyncOffset(0));
 updateSyncOffsetDisplay();
+
+// 가사 글자 크기. 브라우저 확대는 제목/버튼까지 같이 키워서 정작 가사 영역이
+// 3~6줄로 줄어들기 때문에, 가사 글자만 키우는 배율을 따로 둔다. 브라우저에 저장.
+const LYRIC_SCALES = [0.8, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+let lyricScale = parseFloat(localStorage.getItem('lyricScale') || '1');
+if (!(lyricScale >= 0.5 && lyricScale <= 4)) lyricScale = 1;
+
+function applyLyricScale() {
+  document.documentElement.style.setProperty('--lyric-scale', String(lyricScale));
+  document.getElementById('fontScaleValue').textContent = Math.round(lyricScale * 100) + '%';
+}
+
+function stepLyricScale(direction) {
+  // 저장값이 프리셋과 정확히 안 맞아도 가장 가까운 프리셋에서 한 칸 이동한다.
+  let nearest = 0;
+  LYRIC_SCALES.forEach((s, i) => {
+    if (Math.abs(s - lyricScale) < Math.abs(LYRIC_SCALES[nearest] - lyricScale)) nearest = i;
+  });
+  const next = Math.min(LYRIC_SCALES.length - 1, Math.max(0, nearest + direction));
+  lyricScale = LYRIC_SCALES[next];
+  localStorage.setItem('lyricScale', String(lyricScale));
+  applyLyricScale();
+  // 줄 높이가 바뀌어 하이라이트 줄 위치가 틀어졌으니 다시 맞춘다(tick이 처리).
+  // 글자 크기 전환(0.3s) 중에는 줄바꿈이 달라질 수 있어서 끝난 뒤 한 번 더.
+  activeIndex = -1;
+  setTimeout(() => { activeIndex = -1; }, 350);
+}
+
+document.getElementById('fontMinus').addEventListener('click', () => stepLyricScale(-1));
+document.getElementById('fontPlus').addEventListener('click', () => stepLyricScale(1));
+applyLyricScale();
 
 // 버튼을 누르면 잠깐 번쩍이게 한다(CSS의 tapFlash). 연속으로 눌러도 매번
 // 처음부터 다시 재생되도록 클래스를 뺐다가 강제 리플로우 후 다시 붙인다.
@@ -395,7 +439,7 @@ function renderLyricsList(data) {
 }
 
 // 하이라이트 줄이 가사 박스 높이의 이 비율 지점에 오도록 스크롤
-const ACTIVE_LINE_OFFSET_RATIO = 0.6;
+const ACTIVE_LINE_OFFSET_RATIO = 0.4;
 
 // instant: 목록이 방금 새로 그려진 직후(곡/가사 소스 전환, 페이지 처음 열기)에는
 // 맨 위에서부터 천천히 내려오지 않고 바로 해당 줄로 맞춘다.
