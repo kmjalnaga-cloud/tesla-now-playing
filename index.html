@@ -125,6 +125,26 @@
     background: #111;
     color: #999;
   }
+
+  /* 클릭/터치 피드백. 버튼 배경이 이미 거의 검정이라 "어두워지기"는 안 보여서,
+     누른 순간 밝아졌다가 원래대로 돌아오는 방식으로 표시한다. */
+  button {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+    transition: transform 0.12s ease-out;
+  }
+  button:active { transform: scale(0.94); }
+  @keyframes tapFlash {
+    0%   { background: #484848; border-color: #999; transform: scale(0.92); }
+    100% { background: #111;    border-color: #333; transform: scale(1); }
+  }
+  @keyframes tapFlashRed {
+    0%   { background: #8c1217; transform: scale(0.92); }
+    100% { background: #e82127; transform: scale(1); }
+  }
+  button.tapped { animation: tapFlash 0.35s ease-out; }
+  #codeSubmit.tapped { animation-name: tapFlashRed; }
 </style>
 </head>
 <body>
@@ -217,6 +237,21 @@ document.getElementById('syncMinus').addEventListener('click', () => setSyncOffs
 document.getElementById('syncPlus').addEventListener('click', () => setSyncOffset(syncOffsetMs + 500));
 document.getElementById('syncReset').addEventListener('click', () => setSyncOffset(0));
 updateSyncOffsetDisplay();
+
+// 버튼을 누르면 잠깐 번쩍이게 한다(CSS의 tapFlash). 연속으로 눌러도 매번
+// 처음부터 다시 재생되도록 클래스를 뺐다가 강제 리플로우 후 다시 붙인다.
+// 클래스는 animationend 대신 타이머로 지운다: 버튼이 화면에 그려지지 않는
+// 상태(탭이 가려짐, display:none 화면 전환)에서는 animationend가 오지 않아
+// 클래스가 남고, 나중에 화면에 다시 나타날 때 뒤늦게 번쩍이기 때문이다.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest && e.target.closest('button');
+  if (!btn) return;
+  clearTimeout(btn.tapTimer);
+  btn.classList.remove('tapped');
+  void btn.offsetWidth;
+  btn.classList.add('tapped');
+  btn.tapTimer = setTimeout(() => btn.classList.remove('tapped'), 400);
+});
 
 document.querySelectorAll('.retryButton').forEach((btn) => {
   btn.addEventListener('click', () => {
