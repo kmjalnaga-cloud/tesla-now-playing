@@ -337,18 +337,34 @@ function render(data) {
   applyPosition(data);
 
   const trackKey = (data.title || '') + '|' + (data.artist || '');
-  // 제목/가수가 같아도 "검색 중 -> 완료"로 가사 내용 자체가 바뀔 수 있어서,
-  // 곡이 바뀐 건지와 별개로 가사 상태(status/plain/synced)도 같이 봐야 한다.
-  const lyricsKey = (data.lyricsStatus || '') + '|' + (data.plainLyrics ? 'p' : '') +
-    '|' + (data.syncedLyrics ? Object.keys(data.syncedLyrics).length : 0);
+  // 제목/가수가 같아도 "검색 중 -> 완료"나 가사 소스 전환으로 가사 내용 자체가
+  // 바뀔 수 있어서, 곡이 바뀐 건지와 별개로 가사 쪽 지문도 같이 봐야 한다.
+  const lyricsKey = lyricsFingerprint(data);
 
   if (trackKey !== lastTrackKey || lyricsKey !== lastLyricsKey) {
-    if (trackKey !== lastTrackKey) activeIndex = -1;
     lastTrackKey = trackKey;
     lastLyricsKey = lyricsKey;
     syncedLyrics = data.syncedLyrics ? Object.values(data.syncedLyrics) : [];
+    // 목록을 새로 그리면 DOM에 .active가 하나도 없다. 이전 가사의 하이라이트
+    // 위치를 기억한 채로 두면 tick()이 "이미 그 줄이 하이라이트됨"이라고
+    // 착각해서 새 가사에 하이라이트를 안 붙이므로 항상 잊는다.
+    activeIndex = -1;
     renderLyricsList(data);
   }
+}
+
+// 가사가 "다시 그려져야 하는지" 판단하는 지문. 줄 수만 보면 줄 수가 같은 다른
+// 소스로 바꿨을 때 새 가사를 안 그리므로 소스 이름과 첫/끝 줄 내용도 넣는다.
+function lyricsFingerprint(data) {
+  const synced = data.syncedLyrics ? Object.values(data.syncedLyrics) : [];
+  return [
+    data.lyricsStatus || '',
+    data.lyricsSource || '',
+    synced.length,
+    synced.length ? synced[0].text : '',
+    synced.length ? synced[synced.length - 1].text : '',
+    data.plainLyrics ? data.plainLyrics.length : 0
+  ].join('|');
 }
 
 function renderLyricsList(data) {
@@ -381,10 +397,12 @@ function renderLyricsList(data) {
 // 하이라이트 줄이 가사 박스 높이의 이 비율 지점에 오도록 스크롤
 const ACTIVE_LINE_OFFSET_RATIO = 0.6;
 
-function scrollToLine(el) {
+// instant: 목록이 방금 새로 그려진 직후(곡/가사 소스 전환, 페이지 처음 열기)에는
+// 맨 위에서부터 천천히 내려오지 않고 바로 해당 줄로 맞춘다.
+function scrollToLine(el, instant) {
   const targetOffset = lyricsBox.clientHeight * ACTIVE_LINE_OFFSET_RATIO;
   const scrollTop = el.offsetTop - targetOffset + el.offsetHeight / 2;
-  lyricsBox.scrollTo({ top: scrollTop, behavior: 'smooth' });
+  lyricsBox.scrollTo({ top: scrollTop, behavior: instant ? 'instant' : 'smooth' });
 }
 
 // 마지막 줄들은 스크롤할 콘텐츠가 부족해서 하이라이트 지점(위 비율)까지
@@ -410,13 +428,14 @@ function tick() {
       else break;
     }
     if (idx !== activeIndex) {
+      const justRendered = activeIndex === -1;
       activeIndex = idx;
       document.querySelectorAll('.line.active').forEach((el) => el.classList.remove('active'));
       if (idx >= 0) {
         const el = document.getElementById('line-' + idx);
         if (el) {
           el.classList.add('active');
-          scrollToLine(el);
+          scrollToLine(el, justRendered);
         }
       }
     }
