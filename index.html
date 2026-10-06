@@ -260,6 +260,29 @@ function subscribe(code) {
   });
 }
 
+// Firebase 서버 시계 - 이 기기 시계 (ms). 앱은 위치를 "서버 시각 기준으로
+// 언제 쟀는지"(positionSampledAt)를 같이 보내므로, 브라우저를 곡 중간에 켰거나
+// 푸시가 늦게 도착해도 그만큼을 더해서 지금 위치를 맞출 수 있다. 서로의 기기
+// 시계가 달라도 둘 다 서버 시계로 환산하기 때문에 영향이 없다.
+let serverOffsetMs = 0;
+let lastData = null;
+db.ref('.info/serverTimeOffset').on('value', (snap) => {
+  serverOffsetMs = snap.val() || 0;
+  if (lastData) applyPosition(lastData);
+});
+
+function applyPosition(data) {
+  isPlaying = !!data.isPlaying;
+  let position = data.positionMs || 0;
+  if (isPlaying && data.positionSampledAt) {
+    const elapsed = Date.now() + serverOffsetMs - data.positionSampledAt;
+    // 시계 이상으로 말도 안 되는 값이 나오면(음수/10분 초과) 보정하지 않는다.
+    if (elapsed > 0 && elapsed < 10 * 60 * 1000) position += elapsed;
+  }
+  basePositionMs = position;
+  baseReceivedAt = Date.now();
+}
+
 function render(data) {
   const nothingPlaying = data.lyricsStatus === 'none';
   statusEl.textContent = nothingPlaying ? '재생 중인 곡이 없어요' : (data.isPlaying ? '재생 중' : '일시정지');
@@ -275,9 +298,8 @@ function render(data) {
     albumArtEl.classList.remove('visible');
   }
 
-  isPlaying = !!data.isPlaying;
-  basePositionMs = data.positionMs || 0;
-  baseReceivedAt = Date.now();
+  lastData = data;
+  applyPosition(data);
 
   const trackKey = (data.title || '') + '|' + (data.artist || '');
   // 제목/가수가 같아도 "검색 중 -> 완료"로 가사 내용 자체가 바뀔 수 있어서,
