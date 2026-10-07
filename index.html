@@ -340,6 +340,34 @@ document.getElementById('codeInput').addEventListener('keydown', (e) => {
 
 let currentCode = null;
 
+// ---- 화면 쪽 진단 ----
+// 테슬라 화면이 멈췄을 때 원인이 폰 앱인지 이 페이지인지 가릴 수 있도록, 페이지에서
+// 난 오류와 "살아 있음" 신호를 Firebase에 남긴다. 가사나 곡명은 들어가지 않는다.
+function reportWebError(kind, message) {
+  try {
+    if (!currentCode) return;
+    db.ref('nowplaying/' + currentCode + '/webError').set({
+      at: firebase.database.ServerValue.TIMESTAMP,
+      kind: kind,
+      message: String(message).slice(0, 200)
+    });
+  } catch (e) { /* 보고에 실패해도 화면은 계속 */ }
+}
+window.addEventListener('error', (e) =>
+  reportWebError('error', e.message + ' @' + String(e.filename || '').split('/').pop() + ':' + e.lineno));
+window.addEventListener('unhandledrejection', (e) =>
+  reportWebError('promise', (e.reason && e.reason.message) || e.reason));
+
+// 30초마다 신호를 보낸다. 이게 끊기면 페이지(브라우저)가 멈췄거나 가려진 것이다.
+setInterval(() => {
+  if (!currentCode) return;
+  db.ref('nowplaying/' + currentCode + '/webStatus').set({
+    at: firebase.database.ServerValue.TIMESTAMP,
+    visible: document.visibilityState,
+    online: browserOfflineSince === null
+  }).catch(() => {});
+}, 30 * 1000);
+
 function subscribe(code) {
   currentCode = code;
   const ref = db.ref('nowplaying/' + code);
@@ -350,7 +378,13 @@ function subscribe(code) {
       setBaseStatus('연결됨 · 재생 대기 중');
       return;
     }
-    render(data);
+    try {
+      render(data);
+    } catch (err) {
+      // 그릴 때 오류가 나면 화면이 마지막 곡에서 조용히 멈춘 것처럼 보이므로 알리고 기록한다.
+      reportWebError('render', (err && err.message) || err);
+      setBaseStatus('⚠ 화면 오류');
+    }
   }, (err) => {
     setBaseStatus('연결 오류: ' + err.message);
   });
