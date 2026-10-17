@@ -511,8 +511,9 @@ function lyricsFingerprint(data) {
 // ---- 일본어 발음 (한글 / 로마자) ----
 // 앱이 NetEase의 로마자 가사(romanizedLyrics)를 원문과 같은 시간대로 보내준다.
 // 로마자는 그대로 보여줄 수도 있고, 아래 규칙으로 한글 발음으로 바꿔 보여줄 수도 있다.
-const PRON_MODES = ['hangul', 'roma', 'off'];
-const PRON_LABELS = { hangul: '발음: 한글', roma: '발음: 로마자', off: '발음: 끔' };
+// hangul: 원문 아래에 한글 발음 / only: 원문 대신 한글 발음만 / roma: 원문 아래에 로마자 / off: 원문만
+const PRON_MODES = ['hangul', 'only', 'roma', 'off'];
+const PRON_LABELS = { hangul: '발음: 한글', only: '발음: 한글만', roma: '발음: 로마자', off: '발음: 끔' };
 let pronMode = localStorage.getItem('pronMode');
 if (PRON_MODES.indexOf(pronMode) < 0) pronMode = 'hangul';
 
@@ -637,7 +638,7 @@ function hasPronunciation(data) {
 function pronunciationLines(data) {
   if (pronMode === 'off' || !hasPronunciation(data)) return [];
   const aligned = alignPronunciation(syncedLyrics, Object.values(data.romanizedLyrics));
-  return pronMode === 'hangul' ? aligned.map(romajiToHangul) : aligned;
+  return pronMode === 'roma' ? aligned : aligned.map(romajiToHangul);
 }
 
 function updatePronButton(data) {
@@ -664,7 +665,11 @@ function renderLyricsList(data) {
       div.className = 'line';
       div.id = 'line-' + i;
       div.textContent = line.text || ' ';
-      if (pron[i]) {
+      if (pron[i] && pronMode === 'only') {
+        // 한글만: 일본어 원문 대신 발음을 그 줄의 글로 쓴다(크기도 원문 줄 그대로).
+        // 발음이 없는 줄(영어만 있는 줄, 크레딧)은 원문이 그대로 남는다.
+        div.textContent = pron[i];
+      } else if (pron[i]) {
         const p = document.createElement('div');
         p.className = 'pron';
         p.textContent = pron[i];
