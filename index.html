@@ -112,13 +112,13 @@
   /* 일본어 노래에서만 나타나는 발음 버튼 묶음 */
   .controlGroup { display: none; align-items: center; gap: 10px; }
   .controlGroup.visible { display: flex; }
-  /* 가사 줄 아래 작은 발음 줄 (한글/로마자) */
-  .pron {
+  /* 일본 노래: 한글 발음이 그 줄의 큰 글씨, 일본어 원문은 그 아래 작은 줄(.sub) */
+  .sub {
     font-size: 0.62em;
     line-height: calc(1.7rem * var(--lyric-scale, 1));
     font-weight: 400;
   }
-  .line.active .pron { color: #d4d4d4; }
+  .line.active .sub { color: #d4d4d4; }
   #fontScaleValue { min-width: 52px; text-align: center; font-size: 0.9rem; }
   #syncControls button {
     font-size: 0.95rem;
@@ -513,8 +513,8 @@ function lyricsFingerprint(data) {
 // 로마자는 그대로 보여줄 수도 있고, 아래 규칙으로 한글 발음으로 바꿔 보여줄 수도 있다.
 // hangul: 원문 아래에 한글 발음 / only: 원문 대신 한글 발음만 / off: 원문만
 // (로마자 보기는 쓰지 않아서 뺐다. 예전에 저장된 'roma'는 목록에 없으니 기본값 hangul이 된다.)
-const PRON_MODES = ['hangul', 'only', 'off'];
-const PRON_LABELS = { hangul: '발음: 한글', only: '발음: 한글만', off: '발음: 끔' };
+const PRON_MODES = ['hangul', 'off'];
+const PRON_LABELS = { hangul: '발음: 한글', off: '발음: 끔' };
 let pronMode = localStorage.getItem('pronMode');
 if (PRON_MODES.indexOf(pronMode) < 0) pronMode = 'hangul';
 
@@ -666,15 +666,14 @@ function renderLyricsList(data) {
       div.className = 'line';
       div.id = 'line-' + i;
       div.textContent = line.text || ' ';
-      if (pron[i] && pronMode === 'only') {
-        // 한글만: 일본어 원문 대신 발음을 그 줄의 글로 쓴다(크기도 원문 줄 그대로).
-        // 발음이 없는 줄(영어만 있는 줄, 크레딧)은 원문이 그대로 남는다.
+      if (pron[i]) {
+        // 한글 발음이 그 줄의 큰 글씨, 일본어 원문은 그 아래에 작게. 발음이 없는 줄
+        // (영어만 있는 줄, 크레딧)은 위에서 넣은 원문이 그대로 큰 글씨로 남는다.
         div.textContent = pron[i];
-      } else if (pron[i]) {
-        const p = document.createElement('div');
-        p.className = 'pron';
-        p.textContent = pron[i];
-        div.appendChild(p);
+        const original = document.createElement('div');
+        original.className = 'sub';
+        original.textContent = line.text;
+        div.appendChild(original);
       }
       lyricsBox.appendChild(div);
     });
