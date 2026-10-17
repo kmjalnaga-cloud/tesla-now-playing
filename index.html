@@ -511,9 +511,10 @@ function lyricsFingerprint(data) {
 // ---- 일본어 발음 (한글 / 로마자) ----
 // 앱이 NetEase의 로마자 가사(romanizedLyrics)를 원문과 같은 시간대로 보내준다.
 // 로마자는 그대로 보여줄 수도 있고, 아래 규칙으로 한글 발음으로 바꿔 보여줄 수도 있다.
-// hangul: 원문 아래에 한글 발음 / only: 원문 대신 한글 발음만 / roma: 원문 아래에 로마자 / off: 원문만
-const PRON_MODES = ['hangul', 'only', 'roma', 'off'];
-const PRON_LABELS = { hangul: '발음: 한글', only: '발음: 한글만', roma: '발음: 로마자', off: '발음: 끔' };
+// hangul: 원문 아래에 한글 발음 / only: 원문 대신 한글 발음만 / off: 원문만
+// (로마자 보기는 쓰지 않아서 뺐다. 예전에 저장된 'roma'는 목록에 없으니 기본값 hangul이 된다.)
+const PRON_MODES = ['hangul', 'only', 'off'];
+const PRON_LABELS = { hangul: '발음: 한글', only: '발음: 한글만', off: '발음: 끔' };
 let pronMode = localStorage.getItem('pronMode');
 if (PRON_MODES.indexOf(pronMode) < 0) pronMode = 'hangul';
 
@@ -638,7 +639,7 @@ function hasPronunciation(data) {
 function pronunciationLines(data) {
   if (pronMode === 'off' || !hasPronunciation(data)) return [];
   const aligned = alignPronunciation(syncedLyrics, Object.values(data.romanizedLyrics));
-  return pronMode === 'roma' ? aligned : aligned.map(romajiToHangul);
+  return aligned.map(romajiToHangul);
 }
 
 function updatePronButton(data) {
